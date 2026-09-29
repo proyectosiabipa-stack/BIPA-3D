@@ -54,6 +54,12 @@ body { background: var(--bg); color: var(--fg); font-family: var(--sans); overfl
 .status { position: absolute; top: 12px; right: 12px; background: var(--panel); border: 1px solid var(--line);
   border-radius: 6px; padding: 7px 10px; font-size: 13px; max-width: calc(100% - 290px); }
 .status b { font-weight: 600; }
+.extras { position: absolute; left: 12px; bottom: 52px; display: flex; gap: 6px; }
+.extras button { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 17px; cursor: pointer; }
+.extras button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.minimap { position: absolute; right: 12px; top: 56px; width: 150px; height: 150px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+.vrbtn { position: absolute !important; left: 50% !important; transform: translateX(-50%); bottom: 12px !important; }
+body.noche { --bg: #10161d; }
 .help { position: absolute; bottom: 12px; left: 12px; font-size: 12px; color: var(--muted); background: var(--panel);
   padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); max-width: calc(100% - 200px); }
 .pad { position: absolute; bottom: 12px; right: 12px; display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
@@ -114,6 +120,9 @@ body.touring .status { display: none; }
   .status { top: auto; left: 8px; right: 172px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-width: none;
     font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .help { display: none; }
+  .extras { left: 8px; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); flex-direction: column; gap: 4px; }
+  .minimap { width: 100px; height: 100px; top: auto; bottom: calc(230px + env(safe-area-inset-bottom, 0px)); right: 8px; }
+  body.touring .extras, body.touring .minimap { display: none; }
   .pad, .pad.zoom { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(3, 48px); }
   .pad button { height: 48px; }
   .lbl { font-size: 11px; padding: 2px 6px; }
@@ -185,10 +194,17 @@ body.touring .status { display: none; }
     <h2 id="tName"></h2>
     <p class="tstate" id="tState"></p>
     <p id="tText"></p>
-    <div class="tacts"><button id="tPrev">◀ Anterior</button><button class="go" id="tNext">Siguiente ▶</button><button id="tExit">Salir</button></div>
+    <div class="tacts"><button id="tVoz" aria-pressed="true" title="Narración por voz">🔊</button><button id="tAuto" aria-pressed="false" title="Avanzar solo">▶▶</button><button id="tPrev">◀ Anterior</button><button class="go" id="tNext">Siguiente ▶</button><button id="tExit">Salir</button></div>
   </section>
   <div class="status" id="status">Toca una zona para ver su nombre</div>
   <div class="help" id="help">Arrastra para moverte · clic derecho o dos dedos para girar · rueda o pellizco para acercar donde apuntas · doble clic para ir ahí</div>
+  <div class="extras" id="extras">
+    <button id="xNoche" aria-pressed="false" title="Modo noche">🌙</button>
+    <button id="xSonido" aria-pressed="false" title="Sonido ambiente">🔈</button>
+    <button id="xGiro" aria-pressed="false" title="Mirar moviendo el celular" hidden>📱</button>
+    <button id="xFull" title="Pantalla completa">⛶</button>
+  </div>
+  <canvas class="minimap" id="minimap" width="150" height="150" hidden aria-label="Minimapa"></canvas>
   <div class="pad zoom" id="zoom">
     <button id="zIn" aria-label="Acercar">+</button>
     <button id="zOut" aria-label="Alejar">−</button>
@@ -218,6 +234,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 
 // Cambia esta ruta si subes el modelo a otra carpeta de tu web
 const MODEL_URL = 'empresa.glb';
@@ -237,9 +254,9 @@ setBg(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', s
 new MutationObserver(setBg).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 500);
+const rig = new THREE.Group(); rig.add(camera); scene.add(rig);   // en VR el visor mueve la cámara dentro del rig
 // Iluminación: cielo + suelo, luz ambiente suave y un sol que proyecta sombras
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x8f8b80, 1.25));
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const hemi = new THREE.HemisphereLight(0xdfefff, 0x8f8b80, 1.25), amb = new THREE.AmbientLight(0xffffff, 0.35); scene.add(hemi, amb);
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(20, 40, 10); scene.add(sun); scene.add(sun.target);
 sun.castShadow = true; sun.shadow.mapSize.set(MOVIL ? 1024 : 2048, MOVIL ? 1024 : 2048);
 sun.shadow.camera.near = 5; sun.shadow.camera.far = 260; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
@@ -272,6 +289,7 @@ new GLTFLoader().load(MODEL_URL, gltf => {
   root.traverse(o => {
     if (!o.isMesh) return;
     o.receiveShadow = true; o.castShadow = !(o.material && o.material.transparent);   // los vidrios no dan sombra
+    if (o.material && o.material.emissive && (o.material.emissive.r + o.material.emissive.g + o.material.emissive.b) > 1.5) glowers.push(o.material);
     if (['Pared', 'Máquina'].includes(objInfo(o)?.tipo)) walls.push(o);   // no se atraviesan
     if (objInfo(o)?.tipo === 'Techo') { techos.push(o); o.visible = walker.on || verTechos; return; }   // techos: solo al caminar
     pickables.push(o);
@@ -337,6 +355,10 @@ function step(dt) {
     }
   }
   walker.pos.y = alturaPiso(walker.pos.x, walker.pos.z, walker.pos.y);
+  colocarCamara();
+}
+function colocarCamara() {
+  if (renderer.xr.isPresenting) { rig.position.set(walker.pos.x, walker.pos.y, walker.pos.z); return; }
   camera.position.set(walker.pos.x, walker.pos.y + EYE, walker.pos.z);
   camera.rotation.set(walker.pitch, walker.yaw, 0, 'YXZ');
 }
@@ -387,6 +409,9 @@ function setMode(walk) {
   techos.forEach(t => { t.visible = walk || verTechos; });
   if (walk) { lastRoom = undefined; } else aerial();
   canvas.style.cursor = walk ? 'crosshair' : 'grab';
+  document.getElementById('minimap').hidden = !walk;
+  document.getElementById('xGiro').hidden = !(walk && MOVIL && 'DeviceOrientationEvent' in window);
+  if (!walk && giro) setGiro(false);
 }
 document.getElementById('bPaseo').onclick = () => setMode(true);
 document.getElementById('bAerea').onclick = () => setMode(false);
@@ -665,8 +690,7 @@ function followStep(dt) {
   if (dist <= stepLen) { walker.pos.x = tgt.x; walker.pos.z = tgt.z; if (++follow.i >= follow.pts.length) follow = null; }
   else { walker.pos.x += dx / dist * stepLen; walker.pos.z += dz / dist * stepLen; }
   walker.pos.y = alturaPiso(walker.pos.x, walker.pos.z, walker.pos.y);
-  camera.position.set(walker.pos.x, walker.pos.y + EYE, walker.pos.z);
-  camera.rotation.set(walker.pitch, walker.yaw, 0, 'YXZ');
+  colocarCamara();
 }
 document.getElementById('rClear').onclick = clearRoute;
 document.getElementById('rGo').onclick = () => {
@@ -715,6 +739,7 @@ function tourShow() {
   document.getElementById('tNext').textContent = tour.i === TOUR.length - 1 ? 'Terminar' : 'Siguiente ▶';
   if (MOVIL_UI) { document.getElementById('tPrev').textContent = '◀'; document.getElementById('tExit').textContent = '✕'; }
   statusEl.innerHTML = ''; statusEl.append('Recorrido guiado · ', Object.assign(document.createElement('b'), { textContent: st.sala }));
+  if (!tour.walking) narrar(`${st.sala}. ${st.texto}`);
   return r;
 }
 function tourGo(i) {
@@ -735,7 +760,7 @@ function tourStart() {
   if (r) { const c = nearestFree(...toCell(r.center.x, r.center.z)); if (c) { const [x, z] = cellPos(...c); walker.pos.set(x, 0, z); } }
   walker.yaw = -Math.PI / 2 + 0.6; tourShow();
 }
-function tourEnd() { tour = null; tourEl.hidden = true; document.body.classList.remove('touring'); follow = null; clearRoute(); statusEl.textContent = 'Recorrido terminado'; }
+function tourEnd() { tour = null; tourEl.hidden = true; narrar(''); document.body.classList.remove('touring'); follow = null; clearRoute(); statusEl.textContent = 'Recorrido terminado'; }
 document.getElementById('bTour').onclick = tourStart;
 document.getElementById('tNext').onclick = () => { if (!tour) return; if (tour.i === TOUR.length - 1) tourEnd(); else tourGo(tour.i + 1); };
 document.getElementById('tPrev').onclick = () => { if (tour && tour.i > 0) tourGo(tour.i - 1); };
@@ -796,9 +821,112 @@ renderer.setAnimationLoop(() => {
     puestos.push([it._x, it._y, bw, bh]);
     it.el.style.left = it._x + 'px'; it.el.style.top = it._y + 'px';
   }
-  sky.position.copy(camera.position);
+  if (renderer.xr.isPresenting) { const d = renderer.xr.getCamera().getWorldDirection(new THREE.Vector3()); walker.yaw = Math.atan2(-d.x, -d.z); }
+  if (walker.on) { minimapa(); sonidoTick(); }
+  sky.position.copy(camera.getWorldPosition(tmp2));
   renderer.render(scene, camera);
 });
+
+// ---- Extras inmersivos: voz, auto, noche, sonido ambiente, giroscopio, pantalla completa, minimapa y VR ----
+let vozOn = true, autoOn = false;
+function narrar(texto) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  if (!texto || !vozOn) return;
+  const u = new SpeechSynthesisUtterance(texto); u.lang = 'es-ES'; u.rate = 0.98;
+  const voz = speechSynthesis.getVoices().find(v => /^es/.test(v.lang)); if (voz) u.voice = voz;
+  u.onend = () => { if (autoOn && tour && !tour.walking) setTimeout(() => { if (autoOn && tour && !tour.walking) document.getElementById('tNext').click(); }, 1200); };
+  speechSynthesis.speak(u);
+}
+document.getElementById('tVoz').onclick = e => { vozOn = !vozOn; e.currentTarget.setAttribute('aria-pressed', vozOn); if (!vozOn) narrar(''); else if (tour && !tour.walking) tourShow(); };
+document.getElementById('tAuto').onclick = e => { autoOn = !autoOn; e.currentTarget.setAttribute('aria-pressed', autoOn); if (autoOn && tour && !tour.walking && !(window.speechSynthesis && speechSynthesis.speaking)) document.getElementById('tNext').click(); };
+// modo noche: cielo oscuro, luz de luna y lámparas encendidas
+let noche = false; const glowers = [];
+function setNoche(on) {
+  noche = on; document.body.classList.toggle('noche', on); document.getElementById('xNoche').setAttribute('aria-pressed', on);
+  const u = sky.material.uniforms;
+  u.top.value.set(on ? 0x070d1c : 0x5d97d2); u.mid.value.set(on ? 0x1a2740 : 0xcfe2f2); u.bot.value.set(on ? 0x0c1119 : 0xdde4e8);
+  scene.fog.color.set(on ? 0x121a26 : 0xd5e2ee);
+  sun.intensity = on ? 0.35 : 2.4; sun.color.set(on ? 0x8fa6d8 : 0xfff4e0);
+  hemi.intensity = on ? 0.35 : 1.25; amb.intensity = on ? 0.18 : 0.35; renderer.toneMappingExposure = on ? 0.9 : 1.05;
+  glowers.forEach(m => { m.emissiveIntensity = on ? 4.5 : 1; });
+}
+document.getElementById('xNoche').onclick = () => setNoche(!noche);
+// sonido ambiente: zumbido de las máquinas que sube al acercarse (generado en el navegador, sin archivos)
+let audio = null;
+function setSonido(on) {
+  document.getElementById('xSonido').setAttribute('aria-pressed', on); document.getElementById('xSonido').textContent = on ? '🔊' : '🔈';
+  if (!on) { if (audio) { audio.gain.gain.value = 0; audio.on = false; } return; }
+  if (!audio) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 50; const og = ctx.createGain(); og.gain.value = 0.25;
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    src.connect(lp).connect(gain); osc.connect(og).connect(gain); gain.connect(ctx.destination); src.start(); osc.start();
+    audio = { ctx, gain, on: true };
+  }
+  audio.on = true; audio.ctx.resume();
+}
+function sonidoTick() {
+  if (!audio || !audio.on) return;
+  let dmin = 1e9; for (const m of marks) if (m.kind === 'Máquina') dmin = Math.min(dmin, walker.pos.distanceTo(m.center));
+  audio.gain.gain.value = Math.min(0.35, 2.2 / Math.max(3, dmin)) * (roomAt(walker.pos)?.name.startsWith('Producción') ? 1 : 0.45);
+}
+document.getElementById('xSonido').onclick = () => setSonido(!(audio && audio.on));
+// giroscopio: en el celular, mirar girando el teléfono
+let giro = false, giroBase = null;
+function onGiro(e) {
+  if (e.alpha == null) return;
+  const yaw = THREE.MathUtils.degToRad(e.alpha), pitch = THREE.MathUtils.degToRad((e.beta || 0) - 90);
+  if (giroBase == null) giroBase = yaw - walker.yaw;
+  walker.yaw = yaw - giroBase; walker.pitch = Math.max(-1, Math.min(0.8, -pitch));
+}
+async function setGiro(on) {
+  if (on && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { if (await DeviceOrientationEvent.requestPermission() !== 'granted') return; } catch { return; }
+  }
+  giro = on; giroBase = null; document.getElementById('xGiro').setAttribute('aria-pressed', on);
+  if (on) addEventListener('deviceorientation', onGiro); else removeEventListener('deviceorientation', onGiro);
+}
+document.getElementById('xGiro').onclick = () => setGiro(!giro);
+// pantalla completa
+if (!document.fullscreenEnabled) document.getElementById('xFull').hidden = true;
+document.getElementById('xFull').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); };
+// minimapa: plano de las salas con tu posición y hacia dónde miras
+const mm = document.getElementById('minimap'), mmc = mm.getContext('2d'); let mmBase = null, mmBox = null;
+function minimapa() {
+  if (!rooms.length) return;
+  if (!mmBase) {
+    mmBox = new THREE.Box3(); rooms.forEach(r => mmBox.union(r.box));
+    const b = document.createElement('canvas'); b.width = b.height = 300; const c = b.getContext('2d');
+    c.fillStyle = '#f4f6f8'; c.fillRect(0, 0, 300, 300);
+    const s = 290 / Math.max(mmBox.max.x - mmBox.min.x, mmBox.max.z - mmBox.min.z);
+    for (const r of rooms) {
+      const pts = r.poly || [[r.box.min.x, r.box.min.z], [r.box.max.x, r.box.min.z], [r.box.max.x, r.box.max.z], [r.box.min.x, r.box.max.z]];
+      c.beginPath(); pts.forEach(([x, z], i) => c[i ? 'lineTo' : 'moveTo'](5 + (x - mmBox.min.x) * s, 5 + (z - mmBox.min.z) * s)); c.closePath();
+      c.fillStyle = r.nivel ? '#e3d9a8' : '#dfe4ea'; c.fill(); c.strokeStyle = '#6b7684'; c.lineWidth = 1; c.stroke();
+    }
+    mmBase = b; mm.dataset.s = s;
+  }
+  const s = +mm.dataset.s, k = 150 / 300;
+  mmc.clearRect(0, 0, 150, 150); mmc.drawImage(mmBase, 0, 0, 150, 150);
+  const x = (5 + (walker.pos.x - mmBox.min.x) * s) * k, y = (5 + (walker.pos.z - mmBox.min.z) * s) * k;
+  mmc.fillStyle = '#1f6f8b88'; mmc.beginPath(); mmc.moveTo(x, y);
+  mmc.arc(x, y, 14, -walker.yaw - Math.PI / 2 - 0.45, -walker.yaw - Math.PI / 2 + 0.45); mmc.closePath(); mmc.fill();
+  mmc.fillStyle = '#1f6f8b'; mmc.beginPath(); mmc.arc(x, y, 3.5, 0, Math.PI * 2); mmc.fill();
+}
+// realidad virtual (Quest y visores compatibles): el gatillo avanza hacia donde miras
+if (navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+  if (!ok) return;
+  renderer.xr.enabled = true; const b = VRButton.createButton(renderer); b.classList.add('vrbtn'); document.body.appendChild(b);
+  renderer.xr.addEventListener('sessionstart', () => { setMode(true); follow = null; });
+  renderer.xr.addEventListener('sessionend', () => { rig.position.set(0, 0, 0); });
+  for (const i of [0, 1]) { const c = renderer.xr.getController(i); c.addEventListener('selectstart', () => { keys.f = true; }); c.addEventListener('selectend', () => { keys.f = false; }); rig.add(c); }
+}).catch(() => {});
+
 </script>
 
 </body>
