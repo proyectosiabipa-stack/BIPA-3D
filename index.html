@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Recorrido Oficinas BIPA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: plano 3D a pantalla completa, panel guía flotante a la izquierda, controles abajo */
+:root {
+  --bg: #eef1f4; --panel: #ffffffee; --fg: #1d2530; --muted: #5d6877; --line: #d5dbe2;
+  --accent: #1f6f8b; --accent-fg: #ffffff; --label-bg: #1d2530e6; --label-fg: #ffffff;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161b21; --panel: #1f262eee; --fg: #e6ebf0; --muted: #9aa6b3; --line: #33404c;
+  --accent: #5fb3d0; --accent-fg: #0d1a20; --label-bg: #e6ebf0e6; --label-fg: #161b21; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161b21; --panel: #1f262eee; --fg: #e6ebf0; --muted: #9aa6b3; --line: #33404c;
+  --accent: #5fb3d0; --accent-fg: #0d1a20; --label-bg: #e6ebf0e6; --label-fg: #161b21; color-scheme: dark }
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); overflow: hidden; }
+#app { position: relative; width: 100%; height: 100%; }
+#c { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+/* etiquetas de máquinas: más pequeñas y con el color de acento */
+.lbl.mark.desk { background: var(--panel); color: var(--fg); border: 1px solid var(--line); text-align: center; }
+.lbl.mark.desk small { display: block; font-size: 9.5px; font-weight: 400; color: var(--muted); }
+.lbl.mark { background: var(--accent); color: var(--accent-fg); font-size: 10.5px; padding: 2px 6px; }
+.lbl { position: absolute; transform: translate(-50%, -50%); background: var(--label-bg); color: var(--label-fg);
+  font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+.panel { position: absolute; top: 12px; left: 12px; width: min(240px, calc(100% - 24px)); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  max-height: calc(100% - 100px); backdrop-filter: blur(6px); }
+.panel h1 { margin: 0; font-size: 15px; font-weight: 600; text-wrap: balance; }
+.panel .sub { margin: 0; font-size: 12px; color: var(--muted); }
+.eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.panel > * { flex-shrink: 0; }
+.panel > .rooms { flex-shrink: 1; min-height: 0; }
+.rooms { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.rooms button { width: 100%; text-align: left; background: none; border: 0; color: var(--fg); font: inherit; font-size: 13px;
+  padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+.rooms button:hover, .rooms button:focus-visible { background: var(--line); outline: none; }
+.rooms button.here { background: var(--accent); color: var(--accent-fg); }
+.toggle { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.toggle button { border: 0; background: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 7px 4px; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.toggle button:focus-visible, .pad button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { position: absolute; top: 12px; right: 12px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 10px; font-size: 13px; max-width: calc(100% - 290px); }
+.status b { font-weight: 600; }
+.help { position: absolute; bottom: 12px; left: 12px; font-size: 12px; color: var(--muted); background: var(--panel);
+  padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); max-width: calc(100% - 200px); }
+.pad { position: absolute; bottom: 12px; right: 12px; display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
+.pad button { height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  font-size: 18px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+.pad button:active { background: var(--accent); color: var(--accent-fg); }
+.phead { position: relative; }
+.ptoggle { position: absolute; top: -2px; right: 0; font: inherit; font-size: 11.5px; padding: 3px 8px; border-radius: 5px;
+  border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+.ptoggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.panel.min > :not(.phead) { display: none; }
+.panel.min .phead .sub { display: none; }
+.pad.zoom { grid-template-columns: repeat(3, 44px); }
+.pad.zoom .wide { grid-column: 1 / -1; width: auto; font-size: 12.5px; padding: 0 8px; }
+.pad.zoom .wide[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.pad .up { grid-column: 2; } .pad .l { grid-column: 1; grid-row: 2; } .pad .dn { grid-column: 2; grid-row: 2; } .pad .r { grid-column: 3; grid-row: 2; }
+.search { width: 100%; font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--fg); }
+.search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rooms .kind { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+.rooms button.here .kind { color: inherit; opacity: .8; }
+.tourbtn { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--accent); background: none; color: var(--accent); text-align: left; }
+.tourbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tour { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); width: min(440px, calc(100% - 32px));
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 14px; font-size: 13.5px;
+  box-shadow: 0 6px 24px #0003; display: flex; flex-direction: column; gap: 6px; }
+.tour h2 { margin: 0; font-size: 17px; }
+.tour p { margin: 0; line-height: 1.45; }
+.tour .tstate { color: var(--accent); font-size: 12px; font-weight: 600; }
+.tour .tacts { display: flex; gap: 6px; margin-top: 4px; }
+.tour button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 5px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
+.tour button.go { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; margin-left: auto; }
+.tour button:disabled { opacity: 0.4; cursor: default; }
+.tour button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 640px) { .tour { bottom: 120px; } }
+.route { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
+.route b { font-weight: 600; }
+.route .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.route .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.route button { font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 5px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
+.route button.go { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.route button:focus-visible, .rooms button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Celulares (Android y iPhone): panel compacto arriba, botones grandes abajo, respeta la muesca y la barra de inicio */
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+#app { height: 100vh; height: 100dvh; }
+body.touring .status { display: none; }
+@media (max-width: 640px) {
+  .panel { top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; width: calc(100% - 16px); max-height: 52%; padding: 10px 12px; gap: 8px; }
+  .panel .sub, .panel .eyebrow:not(label) { display: none; }
+  .panel h1 { font-size: 15px; padding-right: 80px; }
+  .ptoggle { top: -1px; font-size: 13px; padding: 5px 10px; }
+  .toggle button { font-size: 14px; padding: 9px 4px; }
+  .tourbtn { font-size: 14px; padding: 9px 10px; }
+  .search { font-size: 16px; padding: 9px 10px; }   /* 16px evita que el iPhone haga zoom al escribir */
+  .rooms button { font-size: 14px; padding: 9px 8px; }
+  .route button { font-size: 14px; padding: 9px 12px; }
+  .status { top: auto; left: 8px; right: 172px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-width: none;
+    font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .help { display: none; }
+  .pad, .pad.zoom { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(3, 48px); }
+  .pad button { height: 48px; }
+  .lbl { font-size: 11px; padding: 2px 6px; }
+  .lbl.mark { font-size: 9.5px; padding: 2px 5px; }
+  .lbl.mark.desk small { font-size: 8.5px; }
+  .tour { left: 8px; right: 8px; width: auto; transform: none; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-height: 46%; overflow-y: auto; padding: 10px 12px; font-size: 13.5px; }
+  .tour h2 { font-size: 16px; }
+  .tour button { font-size: 14px; padding: 10px 12px; }
+  body.touring #pad { display: none !important; }
+}
+/* Celular acostado: panel a la izquierda más bajo, recorrido a la izquierda de los botones */
+@media (max-height: 500px) and (orientation: landscape) {
+  .panel { top: calc(8px + env(safe-area-inset-top, 0px)); left: calc(8px + env(safe-area-inset-left, 0px)); max-height: calc(100% - 16px); padding: 10px; gap: 7px; }
+  .panel .sub { display: none; }
+  .help { display: none; }
+  .status { top: 8px; right: calc(8px + env(safe-area-inset-right, 0px)); max-width: calc(100% - 290px); font-size: 12.5px; }
+  .pad, .pad.zoom { right: calc(8px + env(safe-area-inset-right, 0px)); bottom: 8px; }
+  .tour { left: calc(8px + env(safe-area-inset-left, 0px)); transform: none; bottom: 8px; width: min(420px, calc(100% - 190px)); max-height: calc(100% - 16px); overflow-y: auto; }
+  .lbl { font-size: 11px; }
+}
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="Modelo 3D de la oficina"></canvas>
+  <div class="labels" id="labels"></div>
+  <aside class="panel">
+    <div class="phead">
+      <button class="ptoggle" id="bPanel" aria-expanded="true">Ocultar</button>
+      <p class="eyebrow">Guía de la empresa</p>
+      <h1>Recorrido de la empresa</h1>
+      <p class="sub">Según croquis · medidas aproximadas</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Modo de vista">
+      <button id="bAerea" aria-pressed="true">Vista aérea</button>
+      <button id="bPaseo" aria-pressed="false">Caminar</button>
+    </div>
+    <button class="tourbtn" id="bTour">▶ Recorrido guiado de inducción</button>
+    <label class="eyebrow" for="q">Buscar persona o lugar</label>
+    <input class="search" id="q" type="search" placeholder="Ej.: Karla, Baños, Máquina 3" autocomplete="off">
+    <div class="route" id="route" hidden>
+      <div>Ruta a <b id="rName"></b><div class="meta" id="rMeta"></div></div>
+      <div class="acts"><button class="go" id="rGo">Llévame caminando</button><button id="rClear">Quitar ruta</button></div>
+    </div>
+    <ul class="rooms" id="rooms"></ul>
+  </aside>
+  <section class="tour" id="tour" hidden aria-live="polite">
+    <p class="eyebrow" id="tStep"></p>
+    <h2 id="tName"></h2>
+    <p class="tstate" id="tState"></p>
+    <p id="tText"></p>
+    <div class="tacts"><button id="tPrev">◀ Anterior</button><button class="go" id="tNext">Siguiente ▶</button><button id="tExit">Salir</button></div>
+  </section>
+  <div class="status" id="status">Toca una zona para ver su nombre</div>
+  <div class="help" id="help">Arrastra para moverte · clic derecho o dos dedos para girar · rueda o pellizco para acercar donde apuntas · doble clic para ir ahí</div>
+  <div class="pad zoom" id="zoom">
+    <button id="zIn" aria-label="Acercar">+</button>
+    <button id="zOut" aria-label="Alejar">−</button>
+    <button id="zAll" aria-label="Ver todo el terreno">⤢</button>
+    <button id="gL" aria-label="Girar vista a la izquierda" title="Girar a la izquierda (Q)">⟲</button>
+    <button id="gR" aria-label="Girar vista a la derecha" title="Girar a la derecha (E)">⟳</button>
+    <button id="gTilt" aria-label="Inclinar la vista" title="Ver más desde arriba o más de lado">↕</button>
+    <button id="gMode" class="wide" aria-pressed="false">Arrastrar: mover</button>
+  </div>
+  <div class="pad" id="pad" hidden>
+    <button class="up" data-k="f" aria-label="Avanzar">▲</button>
+    <button class="l" data-k="l" aria-label="Girar a la izquierda">◀</button>
+    <button class="dn" data-k="b" aria-label="Retroceder">▼</button>
+    <button class="r" data-k="r" aria-label="Girar a la derecha">▶</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MapControls } from 'three/addons/controls/MapControls.js';
+
+// Cambia esta ruta si subes el modelo a otra carpeta de tu web
+const MODEL_URL = 'empresa.glb';
+const EYE = 1.6, SPEED = 4.5, TURN = 1.8, RADIUS = 0.3;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const MOVIL = matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 640px)').matches;
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOVIL ? 1.5 : 2));   // en celulares, menos píxeles = más fluido y menos batería
+const scene = new THREE.Scene();
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const setBg = () => { scene.background = new THREE.Color(css('--bg').slice(0, 7)); };
+setBg(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setBg);
+new MutationObserver(setBg).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 500);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 2.2));
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));   // aclara los interiores con techo
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(20, 40, 10); scene.add(sun);
+
+// Controles tipo mapa: arrastrar mueve, clic derecho o dos dedos giran, la rueda acerca hacia donde apunta el cursor
+const orbit = new MapControls(camera, canvas);
+orbit.enableDamping = true; orbit.maxPolarAngle = Math.PI * 0.48;
+orbit.zoomToCursor = true; orbit.minDistance = 2; orbit.zoomSpeed = 1.2;
+
+const walls = [], pickables = [], rooms = [], marks = [], techos = [];
+const labelsEl = document.getElementById('labels'), statusEl = document.getElementById('status');
+const roomsEl = document.getElementById('rooms');
+
+// Tipo y nombre del objeto: sube por la jerarquía hasta el nodo que los guarda
+const objInfo = o => { while (o && !o.userData.nombre) o = o.parent; return o ? o.userData : null; };
+
+new GLTFLoader().load(MODEL_URL, gltf => {
+  const root = gltf.scene; scene.add(root);
+  root.updateMatrixWorld(true);
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    if (['Pared', 'Máquina'].includes(objInfo(o)?.tipo)) walls.push(o);   // no se atraviesan
+    if (objInfo(o)?.tipo === 'Techo') { techos.push(o); o.visible = walker.on; return; }   // techos: solo al caminar
+    pickables.push(o);
+  });
+  root.children.forEach(o => {
+    if (['Máquina', 'Escritorio'].includes(o.userData.tipo) && o.userData.centro) {
+      const desk = o.userData.tipo === 'Escritorio';
+      const el = document.createElement('div'); el.className = desk ? 'lbl mark desk' : 'lbl mark'; el.textContent = o.userData.persona || o.userData.nombre; if (o.userData.cargo) { const c = document.createElement('small'); c.textContent = o.userData.cargo; el.appendChild(c); } labelsEl.appendChild(el);
+      // los nombres de los escritorios solo aparecen al acercarse
+      marks.push({ el, desk, name: o.userData.persona || o.userData.nombre, cargo: o.userData.cargo, clave: o.userData.nombre, kind: o.userData.tipo, center: new THREE.Vector3(o.userData.centro[0], o.userData.centro[2] || 0, o.userData.centro[1]) });
+      return;
+    }
+    if (o.userData.tipo !== 'Sala') return;
+    const box = new THREE.Box3().setFromObject(o);
+    const name = o.userData.nombre;
+    const el = document.createElement('div'); el.className = 'lbl'; el.textContent = name; labelsEl.appendChild(el);
+    const [cx, cz] = o.userData.centro || [box.getCenter(new THREE.Vector3()).x, box.getCenter(new THREE.Vector3()).z];
+    const size = box.getSize(new THREE.Vector3());
+    const nv = o.userData.nivel;   // planta alta (p. ej. Logística encima del almacén)
+    const r = { name, kind: 'Sala', box, poly: o.userData.contorno, size: Math.max(size.x, size.z), center: new THREE.Vector3(cx, nv ? nv.alto : 0, cz), el, nivel: nv };
+    if (nv) niveles.push(nv);
+    rooms.push(r);
+  });
+  const all = new THREE.Box3().setFromObject(root);
+  const c = all.getCenter(new THREE.Vector3());
+  span = Math.max(all.max.x - all.min.x, all.max.z - all.min.z);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(span * 8, span * 8), new THREE.MeshLambertMaterial({ color: 0xb9bdb3 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(c.x, -0.2, c.z); scene.add(ground);
+  home = c; aerial();
+  walker.pos.set(-2, 0, 66); walker.yaw = -Math.PI / 2;   // en la entrada principal, mirando hacia dentro
+  buildGrid(root, all);
+  renderList();
+}, undefined, () => { statusEl.textContent = 'No se pudo cargar ' + MODEL_URL + '. Súbelo junto a esta página.'; });
+
+// ---- Modo caminar ----
+const walker = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: -0.05 };
+const keys = {};
+const ray = new THREE.Raycaster();
+function blocked(from, dir, dist) {
+  ray.set(new THREE.Vector3(from.x, from.y + 1.0, from.z), dir); ray.far = dist + RADIUS;
+  return ray.intersectObjects(walls, false).length > 0;
+}
+function step(dt) {
+  let turn = 0, move = 0;
+  if (keys.ArrowLeft || keys.a || keys.l) turn += 1;
+  if (keys.ArrowRight || keys.d || keys.r) turn -= 1;
+  if (keys.ArrowUp || keys.w || keys.f) move += 1;
+  if (keys.ArrowDown || keys.s || keys.b) move -= 1;
+  walker.yaw += turn * TURN * dt;
+  if (move) {
+    const dir = new THREE.Vector3(-Math.sin(walker.yaw), 0, -Math.cos(walker.yaw)).multiplyScalar(Math.sign(move));
+    const d = SPEED * dt;
+    // desliza a lo largo de las paredes probando cada eje por separado
+    for (const ax of [new THREE.Vector3(dir.x, 0, 0), new THREE.Vector3(0, 0, dir.z)]) {
+      const len = ax.length(); if (len < 1e-4) continue;
+      ax.normalize(); if (!blocked(walker.pos, ax, d * len)) walker.pos.addScaledVector(ax, d * len);
+    }
+  }
+  walker.pos.y = alturaPiso(walker.pos.x, walker.pos.z, walker.pos.y);
+  camera.position.set(walker.pos.x, walker.pos.y + EYE, walker.pos.z);
+  camera.rotation.set(walker.pitch, walker.yaw, 0, 'YXZ');
+}
+function inPoly(poly, x, z) {
+  let ins = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins;
+  }
+  return ins;
+}
+// si una sala está dentro de otra (Venta dentro del área de trabajo), gana la más pequeña
+// en modo caminar, oculta las etiquetas que quedan detrás de una pared
+const occ = new THREE.Raycaster(), tmp = new THREE.Vector3();
+function behindWall(pt) {
+  if (!walker.on) return false;
+  tmp.subVectors(pt, camera.position); const d = tmp.length();
+  occ.set(camera.position, tmp.normalize()); occ.far = d - 0.3;
+  return occ.intersectObjects(walls, false).length > 0;
+}
+function roomAt(p) {
+  const arriba = (p.y || 0) > 1.2;   // en planta alta solo cuentan las salas de ese nivel, y viceversa
+  return rooms.slice().sort((a, b) => a.size - b.size).find(r => !!r.nivel === arriba && (r.poly ? inPoly(r.poly, p.x, p.z) : (p.x >= r.box.min.x && p.x <= r.box.max.x && p.z >= r.box.min.z && p.z <= r.box.max.z)));
+}
+// altura del piso donde está el caminante: escalera (rampa), descanso y planta alta
+const niveles = [];
+const dentro = (b, x, z) => x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3];
+function alturaPiso(x, z, yPrev) {
+  for (const n of niveles) {
+    if (dentro(n.rampa, x, z)) return Math.min(n.alto, Math.max(0, n.alto * (n.rampa[3] - z) / (n.rampa[3] - n.rampa[1])));
+    if (dentro(n.rellano, x, z)) return n.alto;
+    if (dentro(n.planta, x, z) && yPrev > n.alto / 2) return n.alto;
+  }
+  return 0;
+}
+let span = 40, home = new THREE.Vector3();
+function aerial() { orbit.maxDistance = span * 2.5; orbit.target.copy(home); camera.position.set(home.x - span * 0.25, span * 0.95, home.z + span * 0.75); orbit.update(); }
+
+function setMode(walk) {
+  walker.on = walk; orbit.enabled = !walk;
+  document.getElementById('bPaseo').setAttribute('aria-pressed', walk);
+  document.getElementById('bAerea').setAttribute('aria-pressed', !walk);
+  document.getElementById('pad').hidden = !walk;
+  document.getElementById('help').textContent = walk
+    ? 'Flechas o W A S D para caminar · arrastra para mirar'
+    : ayudaAerea();
+  document.getElementById('zoom').hidden = walk;
+  techos.forEach(t => { t.visible = walk; });
+  if (walk) { lastRoom = undefined; } else aerial();
+  canvas.style.cursor = walk ? 'crosshair' : 'grab';
+}
+document.getElementById('bPaseo').onclick = () => setMode(true);
+document.getElementById('bAerea').onclick = () => setMode(false);
+
+let fly = null;
+function goTo(r) {
+  if (!r.size) r.size = 6;
+  if (walker.on) { walker.pos.set(r.center.x, r.center.y || 0, r.center.z); return; }
+  fly = { t: 0, from: orbit.target.clone(), to: r.center.clone(), camFrom: camera.position.clone(),
+          camTo: r.center.clone().add(new THREE.Vector3(-0.2, 0.9, 0.7).multiplyScalar(Math.max(12, r.size * 1.1))) };
+}
+
+addEventListener('keydown', e => { if (e.target.id === 'q') return; if (/^Arrow|^[wasd]$/i.test(e.key)) follow = null; if (walker.on && /^Arrow/.test(e.key)) e.preventDefault(); keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = true; });
+addEventListener('keyup', e => { keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
+document.querySelectorAll('#pad button').forEach(b => {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); follow = null; keys[k] = true; b.setPointerCapture(e.pointerId); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, () => { keys[k] = false; }));
+});
+
+// Mirar arrastrando (modo caminar) y tocar para identificar objetos
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, moved: 0 }; if (walker.on) canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved += Math.abs(dx) + Math.abs(dy);
+  if (walker.on) {
+    walker.yaw += dx * 0.005; walker.pitch = Math.max(-1, Math.min(0.8, walker.pitch + dy * 0.004));
+    drag.x = e.clientX; drag.y = e.clientY;
+  }
+});
+canvas.addEventListener('pointerup', e => {
+  if (drag && drag.moved < 6) pick(e);
+  drag = null;
+});
+const pickRay = new THREE.Raycaster();
+// Doble clic: en vista aérea acerca la cámara a ese punto; caminando, te lleva ahí
+canvas.addEventListener('dblclick', e => {
+  const rect = canvas.getBoundingClientRect();
+  pickRay.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1), camera);
+  const hit = pickRay.intersectObjects(pickables, false)[0]; if (!hit) return;
+  const pt = hit.point.clone(); pt.y = 0;
+  if (walker.on) {
+    const c = G && nearestFree(...toCell(pt.x, pt.z));
+    if (c) { const [x, z] = cellPos(...c); follow = null; walker.pos.set(x, 0, z); }
+    return;
+  }
+  const off = camera.position.clone().sub(orbit.target), dist = Math.min(off.length(), 14);
+  fly = { t: 0, from: orbit.target.clone(), to: pt, camFrom: camera.position.clone(), camTo: pt.clone().add(off.setLength(dist)) };
+});
+// girar la vista: botones ⟲ ⟳ ⦣, teclas Q / E, y botón para que arrastrar gire en vez de mover
+let arrastreGira = false;
+function ayudaAerea() {
+  return arrastreGira
+    ? 'Arrastra para girar · clic derecho o dos dedos para moverte · ⟲ ⟳ o teclas Q E giran · rueda o pellizco para acercar'
+    : 'Arrastra para moverte · clic derecho o dos dedos para girar · ⟲ ⟳ o teclas Q E giran · rueda o pellizco para acercar · doble clic para ir ahí';
+}
+function setArrastre(gira) {
+  arrastreGira = gira;
+  orbit.mouseButtons.LEFT = gira ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+  orbit.mouseButtons.RIGHT = gira ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  orbit.touches.ONE = gira ? THREE.TOUCH.ROTATE : THREE.TOUCH.PAN;
+  orbit.touches.TWO = gira ? THREE.TOUCH.DOLLY_PAN : THREE.TOUCH.DOLLY_ROTATE;
+  const b = document.getElementById('gMode');
+  b.textContent = gira ? 'Arrastrar: girar' : 'Arrastrar: mover'; b.setAttribute('aria-pressed', gira);
+  if (!walker.on) document.getElementById('help').textContent = ayudaAerea();
+}
+function girar(ang, incl = 0) {
+  if (walker.on) { walker.yaw -= ang; return; }
+  const off = camera.position.clone().sub(orbit.target);
+  const sph = new THREE.Spherical().setFromVector3(off);
+  sph.theta += ang;
+  sph.phi = Math.min(Math.max(sph.phi + incl, 0.05), orbit.maxPolarAngle);
+  const camTo = orbit.target.clone().add(new THREE.Vector3().setFromSpherical(sph));
+  fly = { t: 0, from: orbit.target.clone(), to: orbit.target.clone(), camFrom: camera.position.clone(), camTo, arco: { off: off.clone(), sph } };
+}
+document.getElementById('gL').onclick = () => girar(-Math.PI / 6);
+document.getElementById('gR').onclick = () => girar(Math.PI / 6);
+document.getElementById('gTilt').onclick = () => {
+  const phi = new THREE.Spherical().setFromVector3(camera.position.clone().sub(orbit.target)).phi;
+  girar(0, phi > 0.9 ? -0.55 : 0.4);   // alterna entre más desde arriba y más de lado
+};
+document.getElementById('gMode').onclick = () => setArrastre(!arrastreGira);
+addEventListener('keydown', e => {
+  if (e.target.id === 'q' || e.repeat && walker.on) return;
+  if (e.key === 'q' || e.key === 'Q') girar(-Math.PI / 12);
+  if (e.key === 'e' || e.key === 'E') girar(Math.PI / 12);
+});
+function zoomBy(f) {
+  const off = camera.position.clone().sub(orbit.target);
+  const len = Math.min(Math.max(off.length() * f, orbit.minDistance), orbit.maxDistance);
+  fly = { t: 0, from: orbit.target.clone(), to: orbit.target.clone(), camFrom: camera.position.clone(), camTo: orbit.target.clone().add(off.setLength(len)) };
+}
+if (matchMedia('(max-width: 640px), (max-height: 500px)').matches) { document.querySelector('.panel').classList.add('min'); document.getElementById('bPanel').textContent = 'Mostrar'; document.getElementById('bPanel').setAttribute('aria-expanded', false); }
+document.getElementById('bPanel').onclick = e => {
+  const min = document.querySelector('.panel').classList.toggle('min');
+  e.target.textContent = min ? 'Mostrar' : 'Ocultar'; e.target.setAttribute('aria-expanded', !min);
+};
+document.getElementById('zIn').onclick = () => zoomBy(0.6);
+document.getElementById('zOut').onclick = () => zoomBy(1.6);
+document.getElementById('zAll').onclick = () => { fly = null; aerial(); };
+function pick(e) {
+  const rect = canvas.getBoundingClientRect();
+  pickRay.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1), camera);
+  const hit = pickRay.intersectObjects(pickables, false)[0];
+  const info = hit && objInfo(hit.object);
+  if (!info) return;
+  const { tipo, cargo } = info, nombre = info.persona || info.nombre;
+  if (['Pared','Terreno','Vidrio','Pintura','Ventana'].includes(tipo)) return;
+  statusEl.innerHTML = ''; const b = document.createElement('b'); b.textContent = nombre;
+  statusEl.append(tipo === 'Sala' ? 'Sala ' : tipo + ' ', b); if (cargo) statusEl.append(' · ' + cargo);
+}
+
+// ---- Buscador y rutas ----
+const qEl = document.getElementById('q'), routeEl = document.getElementById('route');
+const norm = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+let current = null;   // lugar con ruta activa
+function places() { return [...rooms, ...marks.filter(m => m.kind === 'Escritorio' || m.kind === 'Máquina')]; }
+function renderList() {
+  const q = norm(qEl.value.trim());
+  const here = walker.on ? roomAt(walker.pos) : null;
+  const list = q ? places().filter(p => norm([p.name, p.cargo || '', p.clave || ''].join(' ')).includes(q)).slice(0, 30) : rooms;
+  roomsEl.innerHTML = '';
+  for (const p of list) {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.textContent = p.name;
+    if (p.kind !== 'Sala') { const k = document.createElement('span'); k.className = 'kind'; k.textContent = p.cargo || p.kind; b.appendChild(k); }
+    if (p === here || p === current) b.classList.add('here');
+    b.addEventListener('click', () => showRoute(p));
+    li.appendChild(b); roomsEl.appendChild(li);
+  }
+  if (q && !list.length) { const li = document.createElement('li'); li.className = 'kind'; li.textContent = 'No hay coincidencias.'; roomsEl.appendChild(li); }
+}
+qEl.addEventListener('input', renderList);
+qEl.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = roomsEl.querySelector('button'); if (b) b.click(); } });
+
+// Cuadrícula de 25 cm: marca como ocupado todo lo que no se puede atravesar
+const CELL = 0.25, SOLIDOS = ['Pared', 'Máquina', 'Escritorio', 'Mesa', 'Mueble'];
+let G = null;
+function hull(pts) {
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of pts.slice().reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function buildGrid(root, all) {
+  const x0 = all.min.x - 3, z0 = all.min.z - 3, W = Math.ceil((all.max.x + 3 - x0) / CELL), H = Math.ceil((all.max.z + 3 - z0) / CELL);
+  const block = new Uint8Array(W * H), p = new THREE.Vector3();
+  root.traverse(o => {
+    const tipo = objInfo(o)?.tipo;
+    if (!o.isMesh || !SOLIDOS.includes(tipo)) return;
+    const margen = tipo === 'Pared' ? 0.15 : 0.45;   // a las máquinas y muebles se les pasa más lejos
+    const pos = o.geometry.attributes.position, pts = [];
+    let ymin = Infinity;
+    for (let i = 0; i < pos.count; i++) { p.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); pts.push([p.x, p.z]); ymin = Math.min(ymin, p.y); }
+    if (ymin > 2) return;   // piezas de la planta alta: no estorban el camino por la planta baja
+    const hl = hull(pts); if (hl.length < 3) return;
+    const xs = hl.map(q => q[0]), zs = hl.map(q => q[1]);
+    const i0 = Math.max(0, Math.floor((Math.min(...xs) - x0) / CELL)), i1 = Math.min(W - 1, Math.floor((Math.max(...xs) - x0) / CELL));
+    const j0 = Math.max(0, Math.floor((Math.min(...zs) - z0) / CELL)), j1 = Math.min(H - 1, Math.floor((Math.max(...zs) - z0) / CELL));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const cx = x0 + (i + 0.5) * CELL, cz = z0 + (j + 0.5) * CELL;
+      // una celda se bloquea si su centro cae dentro o a menos del margen de la pieza
+      let inside = true;
+      for (let k = 0; k < hl.length; k++) {
+        const [ax, az] = hl[k], [bx, bz] = hl[(k + 1) % hl.length];
+        const ex = bx - ax, ez = bz - az, len = Math.hypot(ex, ez) || 1;
+        if ((ex * (cz - az) - ez * (cx - ax)) / len < -margen) { inside = false; break; }
+      }
+      if (inside) block[j * W + i] = 1;
+    }
+  });
+  G = { x0, z0, W, H, block };
+}
+const toCell = (x, z) => [Math.floor((x - G.x0) / CELL), Math.floor((z - G.z0) / CELL)];
+const cellPos = (i, j) => [G.x0 + (i + 0.5) * CELL, G.z0 + (j + 0.5) * CELL];
+const free = (i, j) => i >= 0 && j >= 0 && i < G.W && j < G.H && !G.block[j * G.W + i];
+function nearestFree(i, j) {
+  if (free(i, j)) return [i, j];
+  for (let r = 1; r < 40; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++)
+    if (Math.max(Math.abs(di), Math.abs(dj)) === r && free(i + di, j + dj)) return [i + di, j + dj];
+  return null;
+}
+function astar(a, b) {
+  const { W, H } = G, N = W * H, gS = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+  const heap = [], push = (f, n) => { heap.push([f, n]); let c = heap.length - 1; while (c) { const pa = (c - 1) >> 1; if (heap[pa][0] <= heap[c][0]) break; [heap[pa], heap[c]] = [heap[c], heap[pa]]; c = pa; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+  const hh = (i, j) => { const dx = Math.abs(i - b[0]), dz = Math.abs(j - b[1]); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+  const s = a[1] * W + a[0], t = b[1] * W + b[0]; gS[s] = 0; push(hh(a[0], a[1]), s);
+  while (heap.length) {
+    const [, n] = pop(); if (closed[n]) continue; closed[n] = 1; if (n === t) break;
+    const i = n % W, j = (n / W) | 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue; const ni = i + di, nj = j + dj;
+      if (!free(ni, nj) || (di && dj && (!free(i + di, j) || !free(i, j + dj)))) continue;
+      const m = nj * W + ni, g = gS[n] + (di && dj ? 1.414 : 1);
+      if (g < gS[m]) { gS[m] = g; from[m] = n; push(g + hh(ni, nj), m); }
+    }
+  }
+  if (from[t] < 0 && s !== t) return null;
+  const out = []; for (let n = t; n >= 0; n = from[n]) { out.push([n % W, (n / W) | 0]); if (n === s) break; }
+  return out.reverse();
+}
+function lineFree(a, b) {   // ¿se ve b desde a sin cruzar nada?
+  const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2);
+  for (let k = 0; k <= n; k++) { const i = Math.round(a[0] + (b[0] - a[0]) * k / n), j = Math.round(a[1] + (b[1] - a[1]) * k / n); if (!free(i, j)) return false; }
+  return true;
+}
+function simplify(cells) {
+  const out = [cells[0]]; let k = 0;
+  while (k < cells.length - 1) { let m = cells.length - 1; while (m > k + 1 && !lineFree(cells[k], cells[m])) m--; out.push(cells[m]); k = m; }
+  return out.map(c => new THREE.Vector3(...cellPos(...c).flatMap((v, i) => i ? [0, v] : [v])));
+}
+let pathDots = null, pin = null, route = null, follow = null;
+function clearRoute() {
+  for (const o of [pathDots, pin]) if (o) { scene.remove(o); o.traverse?.(c => c.geometry?.dispose()); }
+  pathDots = pin = route = follow = current = null; routeEl.hidden = true; renderList();
+}
+function startPoint() {
+  if (walker.on) return walker.pos.clone();
+  const ent = rooms.find(r => /entrada principal/i.test(r.name));
+  return ent ? ent.center.clone() : walker.pos.clone();
+}
+function showRoute(p) {
+  if (!G) return;
+  clearRoute(); current = p;
+  const dest = p.nivel ? { x: p.nivel.acceso[0][0], z: p.nivel.acceso[0][1] } : p.center;
+  const from = startPoint(), a = nearestFree(...toCell(from.x, from.z)), b = nearestFree(...toCell(dest.x, dest.z));
+  const cells = a && b && astar(a, b);
+  const accent = new THREE.Color(css('--accent').slice(0, 7));
+  routeEl.hidden = false; document.getElementById('rName').textContent = p.name;
+  if (!cells) { document.getElementById('rMeta').textContent = 'No encontré un camino hasta aquí.'; goTo(p); renderList(); return; }
+  const pts = simplify(cells); route = pts;
+  if (p.nivel) for (const [x, z] of p.nivel.acceso) pts.push(new THREE.Vector3(x, 0, z));
+  let len = 0; for (let k = 1; k < pts.length; k++) len += pts[k].distanceTo(pts[k - 1]);
+  const mins = Math.max(1, Math.round(len / 1.3 / 60));
+  document.getElementById('rMeta').textContent = `${Math.round(len)} m desde ${walker.on ? 'donde estás' : 'la entrada principal'} · unos ${mins} min a pie`;
+  // puntos en el piso cada 70 cm
+  const dots = [];
+  for (let k = 1; k < pts.length; k++) {
+    const seg = pts[k].distanceTo(pts[k - 1]);
+    for (let d = 0; d < seg; d += 0.7) dots.push(pts[k - 1].clone().lerp(pts[k], d / seg));
+  }
+  dots.push(pts[pts.length - 1]);
+  const geo = new THREE.CylinderGeometry(0.16, 0.16, 0.04, 14);
+  pathDots = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: accent, transparent: true }), dots.length);
+  const mtx = new THREE.Matrix4();
+  dots.forEach((d, k) => { mtx.makeTranslation(d.x, 0.06, d.z); pathDots.setMatrixAt(k, mtx); });
+  scene.add(pathDots);
+  pin = new THREE.Group();
+  const pm = new THREE.MeshBasicMaterial({ color: accent });
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 20), pm); cone.rotation.x = Math.PI; cone.position.y = 2.9;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 14), pm); ball.position.y = 3.5;
+  const end = pts[pts.length - 1]; pin.position.set(p.kind === 'Sala' && !p.nivel ? p.center.x : end.x, p.center.y || 0, p.kind === 'Sala' && !p.nivel ? p.center.z : end.z);
+  pin.add(cone, ball); scene.add(pin);
+  if (!walker.on) {
+    const box = new THREE.Box3().setFromPoints(pts), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    goTo({ center: c, size: Math.max(sz.x, sz.z) * 1.1 });
+  }
+  renderList();
+}
+function followStep(dt) {
+  const tgt = follow.pts[follow.i];
+  const dx = tgt.x - walker.pos.x, dz = tgt.z - walker.pos.z, dist = Math.hypot(dx, dz);
+  const want = Math.atan2(-dx, -dz);
+  let dy = want - walker.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  walker.yaw += dy * Math.min(1, dt * 5); walker.pitch += (-0.12 - walker.pitch) * Math.min(1, dt * 3);
+  const stepLen = SPEED * dt * (Math.abs(dy) > 1 ? 0.3 : 1);
+  if (dist <= stepLen) { walker.pos.x = tgt.x; walker.pos.z = tgt.z; if (++follow.i >= follow.pts.length) follow = null; }
+  else { walker.pos.x += dx / dist * stepLen; walker.pos.z += dz / dist * stepLen; }
+  walker.pos.y = alturaPiso(walker.pos.x, walker.pos.z, walker.pos.y);
+  camera.position.set(walker.pos.x, walker.pos.y + EYE, walker.pos.z);
+  camera.rotation.set(walker.pitch, walker.yaw, 0, 'YXZ');
+}
+document.getElementById('rClear').onclick = clearRoute;
+document.getElementById('rGo').onclick = () => {
+  if (!route) return;
+  const pts = route;
+  if (!walker.on) { setMode(true); walker.pos.copy(pts[0]); const d = pts[1] || pts[0]; walker.yaw = Math.atan2(-(d.x - pts[0].x), -(d.z - pts[0].z)); }
+  follow = { pts: pts.slice(1), i: 0 };
+  if (!follow.pts.length) follow = null;
+};
+
+// ---- Recorrido guiado de inducción ----
+// Paradas en orden: 'sala' es el nombre exacto de la zona en el modelo; 'texto' se puede editar libremente.
+const TOUR = [
+  { sala: 'Entrada principal', texto: 'Bienvenido a BIPA. Por aquí entran el personal, las visitas y los vehículos, por el portón azul. Vigilancia está justo al lado.' },
+  { sala: 'Vigilancia', texto: 'Caseta de vigilancia. Aquí se anuncian las visitas y proveedores antes de pasar.' },
+  { sala: 'Estacionamiento autos', texto: 'Estacionamiento de autos y camiones. Al lado está el de motos. Al fondo se ve el silo del vecino.' },
+  { sala: 'Entrada galpón de la leche', texto: 'Acceso al galpón de la leche desde la vía interna.' },
+  { sala: 'Galpón de la leche', texto: 'Galpón de la leche. Aquí están la mesa de secado y el área de empaquetado.' },
+  { sala: 'Empaquetado', texto: 'Área de empaquetado del galpón de la leche.' },
+  { sala: 'Producción (máquinas)', texto: 'Galpón de producción con las 6 máquinas, las mesas de empaque y etiquetado, el almacén de productos y encima la oficina de Logística.' },
+  { sala: 'Almacén de productos', texto: 'Almacén de productos, en planta baja dentro del galpón de producción, con estanterías de producto terminado.' },
+  { sala: 'Logística', texto: 'Oficina de Logística, en la planta alta encima del almacén de productos. Se sube por la escalera metálica desde producción. Aquí trabajan Lic. Yormary Barrios (logística y despacho) y Lic. Paola (inventarios y suministros).' },
+  { sala: 'Patio', texto: 'Patio de servicio: tanques de agua y portón azul de entrada al galpón de oficinas y velas.' },
+  { sala: 'Área de trabajo velas aromáticas', texto: 'Área de trabajo de velas aromáticas: mesas de acero, llenadora y pasillo peatonal amarillo.' },
+  { sala: 'Oficina de Directivos', texto: 'Oficina de Directivos, detrás del frente de vidrio: sala con sillones, mesón y exhibición de productos. Aquí trabajan los directores generales, Ing. Andrés Maldonado e Ing. Edgardo Jeréz.' },
+  { sala: 'Oficina de ventas', texto: 'Oficina de ventas (comercial): Lic. Maria Molina y Lic. Karla Montilla (líderes comerciales), Giannfranco Araujo (analista de inteligencia comercial), Ing. Octavio (coordinador de ventas) y Lic. Francis Suárez (cotización y facturación).' },
+  { sala: 'Almacén', texto: 'Almacén, detrás del portón gris, con sus estanterías.' },
+  { sala: 'Cocina', texto: 'Cocina: nevera, microondas y fregadero para el personal.' },
+  { sala: 'Comedor', texto: 'Comedor con mesa alta y dispensador de agua.' },
+  { sala: 'Baño damas', texto: 'Baños: el de damas está aquí y el de caballeros justo al lado.' },
+  { sala: 'Sala de reuniones', texto: 'Sala de reuniones.' },
+  { sala: 'Archivo', texto: 'Archivo: carpetas y documentos de la empresa.' },
+  { sala: 'Oficina administrativa', texto: 'Oficina administrativa: Lic. Fabiola (gerente general), Doc. Pedro Jeréz (abogado empresarial), Lic. Mariana Materano (tesorería), Lic. Dailimar Barrios (cobranza y pago de comisiones), Omaimar y el servidor.' },
+  { sala: 'Velas aromáticas', texto: 'Depósito de velas aromáticas terminadas. Fin del recorrido: ¡bienvenido al equipo!' },
+];
+let tour = null;
+const tourEl = document.getElementById('tour');
+function tourShow() {
+  const st = TOUR[tour.i], r = rooms.find(x => x.name === st.sala);
+  document.getElementById('tStep').textContent = `Parada ${tour.i + 1} de ${TOUR.length}`;
+  document.getElementById('tName').textContent = st.sala;
+  document.getElementById('tText').textContent = st.texto;
+  document.getElementById('tState').textContent = tour.walking ? 'Caminando hacia aquí…' : 'Estás aquí';
+  document.getElementById('tPrev').disabled = tour.i === 0;
+  document.getElementById('tNext').textContent = tour.i === TOUR.length - 1 ? 'Terminar' : 'Siguiente ▶';
+  statusEl.innerHTML = ''; statusEl.append('Recorrido guiado · ', Object.assign(document.createElement('b'), { textContent: st.sala }));
+  return r;
+}
+function tourGo(i) {
+  tour.i = i; const r = rooms.find(x => x.name === TOUR[i].sala);
+  if (!r) { tour.walking = false; tourShow(); return; }
+  showRoute(r);
+  if (route && route.length > 1 && walker.pos.distanceTo(route[route.length - 1]) > 0.5) {
+    follow = { pts: route.slice(1), i: 0 }; tour.walking = true;
+  } else tour.walking = false;
+  tourShow();
+}
+function tourStart() {
+  if (!G) return;
+  clearRoute(); setMode(true);
+  document.querySelector('.panel').classList.add('min'); document.getElementById('bPanel').textContent = 'Mostrar';
+  tour = { i: 0, walking: false }; tourEl.hidden = false; document.body.classList.add('touring');
+  const r = rooms.find(x => x.name === TOUR[0].sala);
+  if (r) { const c = nearestFree(...toCell(r.center.x, r.center.z)); if (c) { const [x, z] = cellPos(...c); walker.pos.set(x, 0, z); } }
+  walker.yaw = -Math.PI / 2 + 0.6; tourShow();
+}
+function tourEnd() { tour = null; tourEl.hidden = true; document.body.classList.remove('touring'); follow = null; clearRoute(); statusEl.textContent = 'Recorrido terminado'; }
+document.getElementById('bTour').onclick = tourStart;
+document.getElementById('tNext').onclick = () => { if (!tour) return; if (tour.i === TOUR.length - 1) tourEnd(); else tourGo(tour.i + 1); };
+document.getElementById('tPrev').onclick = () => { if (tour && tour.i > 0) tourGo(tour.i - 1); };
+document.getElementById('tExit').onclick = tourEnd;
+function tourTick() { if (tour && tour.walking && !follow) { tour.walking = false; tourShow(); } }
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const clock = new THREE.Clock(), v = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+let lastRoom = null;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (fly) {
+    fly.t = Math.min(1, fly.t + dt * 1.5); const k = fly.t * fly.t * (3 - 2 * fly.t);
+    orbit.target.lerpVectors(fly.from, fly.to, k); camera.position.lerpVectors(fly.camFrom, fly.camTo, k);
+    if (fly.arco) {   // al girar, la cámara recorre un arco (misma distancia) en vez de una recta
+      const a = new THREE.Spherical().setFromVector3(fly.arco.off), b = fly.arco.sph;
+      a.theta += (b.theta - a.theta) * k; a.phi += (b.phi - a.phi) * k;
+      camera.position.copy(orbit.target).add(new THREE.Vector3().setFromSpherical(a));
+    }
+    if (fly.t === 1) fly = null;
+  }
+  if (walker.on) { if (follow) followStep(dt); else step(dt); } else orbit.update();
+  tourTick();
+  if (pathDots) pathDots.material.opacity = 0.65 + 0.35 * Math.sin(clock.elapsedTime * 4);
+  const here = walker.on ? roomAt(walker.pos) : null;
+  if (here !== lastRoom) {
+    renderList();
+    if (here) { statusEl.innerHTML = 'Estás en <b></b>'; statusEl.querySelector('b').textContent = here.name; }
+    lastRoom = here;
+  }
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  for (const r of rooms) {
+    v.set(r.center.x, r.center.y + (walker.on ? 2.3 : 0.4), r.center.z).project(camera);
+    const dist = camera.position.distanceTo(r.center);
+    const show = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && (!walker.on || (dist < 22 && r !== here && !behindWall(tmp2.set(r.center.x, r.center.y + 1.5, r.center.z))));
+    r.el.hidden = !show;
+    if (show) r._x = (v.x + 1) / 2 * w, r._y = (1 - v.y) / 2 * h;
+  }
+  for (const m of marks) {
+    v.set(m.center.x, m.center.y + (m.desk ? 1.3 : (walker.on ? 2.8 : 2.4)), m.center.z).project(camera);
+    const d = camera.position.distanceTo(m.center);
+    const show = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && (m.desk ? d < 16 : (!walker.on || d < 18)) && !behindWall(tmp2.set(m.center.x, m.center.y + 1.2, m.center.z));
+    m.el.hidden = !show;
+    if (show) m._x = (v.x + 1) / 2 * w, m._y = (1 - v.y) / 2 * h;
+  }
+  // etiquetas que se tapan entre sí: se muestra solo la primera (personas, luego salas, luego máquinas)
+  const puestos = [];
+  for (const it of [...marks.filter(m => m.desk), ...rooms, ...marks.filter(m => !m.desk)]) {
+    if (it.el.hidden) continue;
+    const bw = it.el.offsetWidth / 2 + 2, bh = it.el.offsetHeight / 2 + 1;
+    if (puestos.some(q => Math.abs(q[0] - it._x) < q[2] + bw && Math.abs(q[1] - it._y) < q[3] + bh)) { it.el.hidden = true; continue; }
+    puestos.push([it._x, it._y, bw, bh]);
+    it.el.style.left = it._x + 'px'; it.el.style.top = it._y + 'px';
+  }
+  renderer.render(scene, camera);
+});
+</script>
+
+</body>
+</html>
