@@ -196,6 +196,7 @@ body.touring .status { display: none; }
     <button id="gL" aria-label="Girar vista a la izquierda" title="Girar a la izquierda (Q)">⟲</button>
     <button id="gR" aria-label="Girar vista a la derecha" title="Girar a la derecha (E)">⟳</button>
     <button id="gTilt" aria-label="Inclinar la vista" title="Ver más desde arriba o más de lado">↕</button>
+    <button id="gTecho" class="wide" aria-pressed="false">Ver techos</button>
     <button id="gMode" class="wide" aria-pressed="false">Arrastrar: mover</button>
   </div>
   <div class="pad" id="pad" hidden>
@@ -243,6 +244,7 @@ orbit.enableDamping = true; orbit.maxPolarAngle = Math.PI * 0.48;
 orbit.zoomToCursor = true; orbit.minDistance = 2; orbit.zoomSpeed = 1.2;
 
 const walls = [], pickables = [], rooms = [], marks = [], techos = [];
+let verTechos = false;   // vista aérea: mostrar los techos verdes de los galpones
 const labelsEl = document.getElementById('labels'), statusEl = document.getElementById('status');
 const roomsEl = document.getElementById('rooms');
 
@@ -255,7 +257,7 @@ new GLTFLoader().load(MODEL_URL, gltf => {
   root.traverse(o => {
     if (!o.isMesh) return;
     if (['Pared', 'Máquina'].includes(objInfo(o)?.tipo)) walls.push(o);   // no se atraviesan
-    if (objInfo(o)?.tipo === 'Techo') { techos.push(o); o.visible = walker.on; return; }   // techos: solo al caminar
+    if (objInfo(o)?.tipo === 'Techo') { techos.push(o); o.visible = walker.on || verTechos; return; }   // techos: solo al caminar
     pickables.push(o);
   });
   root.children.forEach(o => {
@@ -360,7 +362,7 @@ function setMode(walk) {
     ? 'Flechas o W A S D para caminar · arrastra para mirar'
     : ayudaAerea();
   document.getElementById('zoom').hidden = walk;
-  techos.forEach(t => { t.visible = walk; });
+  techos.forEach(t => { t.visible = walk || verTechos; });
   if (walk) { lastRoom = undefined; } else aerial();
   canvas.style.cursor = walk ? 'crosshair' : 'grab';
 }
@@ -446,6 +448,10 @@ document.getElementById('gTilt').onclick = () => {
   girar(0, phi > 0.9 ? -0.55 : 0.4);   // alterna entre más desde arriba y más de lado
 };
 document.getElementById('gMode').onclick = () => setArrastre(!arrastreGira);
+document.getElementById('gTecho').onclick = e => {
+  verTechos = !verTechos; techos.forEach(t => { t.visible = walker.on || verTechos; });
+  e.currentTarget.setAttribute('aria-pressed', verTechos); e.currentTarget.textContent = MOVIL_UI ? 'Techos' : (verTechos ? 'Quitar techos' : 'Ver techos');
+};
 addEventListener('keydown', e => {
   if (e.target.id === 'q' || e.repeat && walker.on) return;
   if (e.key === 'q' || e.key === 'Q') girar(-Math.PI / 12);
@@ -456,7 +462,7 @@ function zoomBy(f) {
   const len = Math.min(Math.max(off.length() * f, orbit.minDistance), orbit.maxDistance);
   fly = { t: 0, from: orbit.target.clone(), to: orbit.target.clone(), camFrom: camera.position.clone(), camTo: orbit.target.clone().add(off.setLength(len)) };
 }
-if (MOVIL_UI) document.getElementById('gMode').textContent = 'Mover';
+if (MOVIL_UI) { document.getElementById('gMode').textContent = 'Mover'; document.getElementById('gTecho').textContent = 'Techos'; }
 if (matchMedia('(max-width: 640px), (max-height: 500px)').matches) { document.querySelector('.panel').classList.add('min'); document.getElementById('bPanel').textContent = '☰ Menú'; document.getElementById('bPanel').setAttribute('aria-expanded', false); }
 document.getElementById('bPanel').onclick = e => {
   const min = document.querySelector('.panel').classList.toggle('min');
