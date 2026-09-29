@@ -217,6 +217,7 @@ body.touring .status { display: none; }
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MapControls } from 'three/addons/controls/MapControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // Cambia esta ruta si subes el modelo a otra carpeta de tu web
 const MODEL_URL = 'empresa.glb';
@@ -224,19 +225,33 @@ const EYE = 1.6, SPEED = 4.5, TURN = 1.8, RADIUS = 0.3;
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 const MOVIL = matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 640px)').matches;
 const MOVIL_UI = matchMedia('(max-width: 640px)').matches;   // pantalla de celular parado: controles compactos
 renderer.setPixelRatio(Math.min(devicePixelRatio, MOVIL ? 1.5 : 2));   // en celulares, menos píxeles = más fluido y menos batería
 const scene = new THREE.Scene();
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const setBg = () => { scene.background = new THREE.Color(css('--bg').slice(0, 7)); };
+const setBg = () => {};   // el fondo ahora es un cielo con degradado
 setBg(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setBg);
 new MutationObserver(setBg).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 500);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 2.2));
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));   // aclara los interiores con techo
-const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(20, 40, 10); scene.add(sun);
+// Iluminación: cielo + suelo, luz ambiente suave y un sol que proyecta sombras
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x8f8b80, 1.25));
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(20, 40, 10); scene.add(sun); scene.add(sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(MOVIL ? 1024 : 2048, MOVIL ? 1024 : 2048);
+sun.shadow.camera.near = 5; sun.shadow.camera.far = 260; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70 });
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;   // reflejos suaves en metales y vidrios
+// Cielo con degradado (sigue a la cámara) y bruma lejana
+const sky = new THREE.Mesh(new THREE.SphereGeometry(440, 24, 12), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color(0x5d97d2) }, mid: { value: new THREE.Color(0xcfe2f2) }, bot: { value: new THREE.Color(0xdde4e8) } },
+  vertexShader: 'varying vec3 p; void main(){ p = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform vec3 top, mid, bot; varying vec3 p; void main(){ float h = normalize(p).y; vec3 c = h > 0.0 ? mix(mid, top, pow(h, 0.55)) : mix(mid, bot, clamp(-h * 5.0, 0.0, 1.0)); gl_FragColor = vec4(c, 1.0); }' }));
+sky.renderOrder = -1; scene.add(sky);
+scene.fog = new THREE.Fog(0xd5e2ee, 170, 470);
 
 // Controles tipo mapa: arrastrar mueve, clic derecho o dos dedos giran, la rueda acerca hacia donde apunta el cursor
 const orbit = new MapControls(camera, canvas);
@@ -256,6 +271,7 @@ new GLTFLoader().load(MODEL_URL, gltf => {
   root.updateMatrixWorld(true);
   root.traverse(o => {
     if (!o.isMesh) return;
+    o.receiveShadow = true; o.castShadow = !(o.material && o.material.transparent);   // los vidrios no dan sombra
     if (['Pared', 'Máquina'].includes(objInfo(o)?.tipo)) walls.push(o);   // no se atraviesan
     if (objInfo(o)?.tipo === 'Techo') { techos.push(o); o.visible = walker.on || verTechos; return; }   // techos: solo al caminar
     pickables.push(o);
@@ -282,8 +298,14 @@ new GLTFLoader().load(MODEL_URL, gltf => {
   const all = new THREE.Box3().setFromObject(root);
   const c = all.getCenter(new THREE.Vector3());
   span = Math.max(all.max.x - all.min.x, all.max.z - all.min.z);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(span * 8, span * 8), new THREE.MeshLambertMaterial({ color: 0xb9bdb3 }));
-  ground.rotation.x = -Math.PI / 2; ground.position.set(c.x, -0.2, c.z); scene.add(ground);
+  // terreno exterior: grama con ruido, repetida
+  const gc = document.createElement('canvas'); gc.width = gc.height = 128; const g2 = gc.getContext('2d'), gd = g2.createImageData(128, 128);
+  for (let i = 0; i < gd.data.length; i += 4) { const n = (Math.random() - 0.5) * 34; gd.data[i] = 104 + n; gd.data[i + 1] = 138 + n; gd.data[i + 2] = 66 + n * 0.6; gd.data[i + 3] = 255; }
+  g2.putImageData(gd, 0, 0);
+  const gt = new THREE.CanvasTexture(gc); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(span * 8 / 3, span * 8 / 3); gt.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(span * 8, span * 8), new THREE.MeshStandardMaterial({ map: gt, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(c.x, -0.2, c.z); ground.receiveShadow = true; scene.add(ground);
+  sun.position.set(c.x + 45, 90, c.z + 30); sun.target.position.copy(c); sun.target.updateMatrixWorld();
   home = c; aerial();
   walker.pos.set(-2, 0, 66); walker.yaw = -Math.PI / 2;   // en la entrada principal, mirando hacia dentro
   buildGrid(root, all);
@@ -774,6 +796,7 @@ renderer.setAnimationLoop(() => {
     puestos.push([it._x, it._y, bw, bh]);
     it.el.style.left = it._x + 'px'; it.el.style.top = it._y + 'px';
   }
+  sky.position.copy(camera.position);
   renderer.render(scene, camera);
 });
 </script>
